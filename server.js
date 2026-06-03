@@ -224,7 +224,8 @@ print(json.dumps({
 }, ensure_ascii=False))
 `;
 
-  const { stdout } = await runProcess('py', ['-c', script, url], { timeoutMs: 180000 });
+  const pythonCmd = os.platform() === 'win32' ? 'py' : 'python3';
+  const { stdout } = await runProcess(pythonCmd, ['-c', script, url], { timeoutMs: 180000 });
   const jsonStart = stdout.indexOf('{');
   if (jsonStart < 0) throw new Error('No Instagram metadata was returned.');
   const payload = JSON.parse(stdout.slice(jsonStart));
