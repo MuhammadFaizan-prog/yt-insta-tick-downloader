@@ -693,7 +693,30 @@ async function handleDownload(req, res) {
       return;
     }
 
-    const outputTemplate = path.join(tempDir, `${title}.%(ext)s`);\n    const args = [\n      '--no-warnings', '--no-playlist',\n      '-f', selector,\n      '-o', outputTemplate,\n      '--concurrent-fragments', '16',   // download 16 fragments in parallel\n      '--buffer-size', '16K',           // larger read buffer\n      '--http-chunk-size', '10M',       // fetch in 10MB chunks\n      '--retries', '10',                // retry on failure\n      '--fragment-retries', '10',       // retry fragments\n    ];\n    if (cookieFilePath) args.push('--cookies', cookieFilePath);\n\n    if (kind === 'audio') {\n      if (getDownloadParam(req, 'audioFormat')) {\n        args.push('-x', '--audio-format', String(getDownloadParam(req, 'audioFormat')));\n        if (getDownloadParam(req, 'audioQuality')) args.push('--audio-quality', String(getDownloadParam(req, 'audioQuality')));\n      }\n    } else {\n      args.push('--merge-output-format', ext === 'mkv' ? 'mkv' : 'mp4');\n    }\n\n    args.push(sourceUrl);\n    await runProcess(ytdlpBinary, args, { timeoutMs: 30 * 60 * 1000 });
+    const outputTemplate = path.join(tempDir, `${title}.%(ext)s`);
+    const args = [
+      '--no-warnings', '--no-playlist',
+      '-f', selector,
+      '-o', outputTemplate,
+      '--concurrent-fragments', '16',   // download 16 fragments in parallel
+      '--buffer-size', '16K',           // larger read buffer
+      '--http-chunk-size', '10M',       // fetch in 10MB chunks
+      '--retries', '10',                // retry on failure
+      '--fragment-retries', '10',       // retry fragments
+    ];
+    if (cookieFilePath) args.push('--cookies', cookieFilePath);
+
+    if (kind === 'audio') {
+      if (getDownloadParam(req, 'audioFormat')) {
+        args.push('-x', '--audio-format', String(getDownloadParam(req, 'audioFormat')));
+        if (getDownloadParam(req, 'audioQuality')) args.push('--audio-quality', String(getDownloadParam(req, 'audioQuality')));
+      }
+    } else {
+      args.push('--merge-output-format', ext === 'mkv' ? 'mkv' : 'mp4');
+    }
+
+    args.push(sourceUrl);
+    await runProcess(ytdlpBinary, args, { timeoutMs: 30 * 60 * 1000 });
     const files = await listFiles(tempDir);
     if (files.length === 0) throw new Error('No downloadable file was produced.');
 
