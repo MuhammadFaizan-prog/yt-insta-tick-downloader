@@ -721,6 +721,6 @@ if (isProduction) {
   app.use(vite.middlewares);
 }
 
-app.listen(port, '127.0.0.1', () => {
-  console.log(`MediaPull running at http://127.0.0.1:${port}/`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`MediaPull running at http://0.0.0.0:${port}/`);
 });
