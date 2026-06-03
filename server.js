@@ -204,7 +204,6 @@ async function probeWithYtDlp(url) {
       args.push('--no-playlist');
     }
   }
-  }
   args.push(url);
 
   const { stdout } = await runProcess(ytdlpBinary, args, { timeoutMs: 180000 });
