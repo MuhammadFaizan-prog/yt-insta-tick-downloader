@@ -197,8 +197,13 @@ function runProcess(command, args, options = {}) {
 async function probeWithYtDlp(url) {
   const args = ['--dump-single-json', '--no-warnings', '--skip-download'];
   if (cookieFilePath) args.push('--cookies', cookieFilePath);
-  if (getPlatform(url) === 'YouTube' && !new URL(url).searchParams.has('list')) {
-    args.push('--no-playlist');
+  
+  if (getPlatform(url) === 'YouTube') {
+    args.push('--extractor-args', 'youtube:player_client=android,web');
+    if (!new URL(url).searchParams.has('list')) {
+      args.push('--no-playlist');
+    }
+  }
   }
   args.push(url);
 
@@ -725,6 +730,11 @@ async function handleDownload(req, res) {
       '--retries', '10',                // retry on failure
       '--fragment-retries', '10',       // retry fragments
     ];
+    
+    if (getPlatform(sourceUrl) === 'YouTube') {
+      args.push('--extractor-args', 'youtube:player_client=android,web');
+    }
+    
     if (cookieFilePath) args.push('--cookies', cookieFilePath);
 
     if (kind === 'audio') {
