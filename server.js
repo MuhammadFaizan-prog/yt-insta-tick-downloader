@@ -18,6 +18,14 @@ const ytdlpBinary = process.env.YTDLP_PATH || 'yt-dlp';
 const ffmpegBinary = process.env.FFMPEG_PATH || 'ffmpeg';
 const ffprobeBinary = process.env.FFPROBE_PATH || 'ffprobe';
 const corsOrigin = process.env.CORS_ORIGIN || false;
+
+// Write YouTube cookies from env var to a temp file for yt-dlp
+let cookieFilePath = null;
+if (process.env.YOUTUBE_COOKIES) {
+  cookieFilePath = path.join(os.tmpdir(), 'yt-cookies.txt');
+  await fs.writeFile(cookieFilePath, process.env.YOUTUBE_COOKIES, 'utf8');
+  console.log('YouTube cookies loaded from environment variable.');
+}
 const { ZipArchive } = archiver;
 const allowedHosts = [
   'youtube.com',
@@ -167,6 +175,7 @@ function runProcess(command, args, options = {}) {
 
 async function probeWithYtDlp(url) {
   const args = ['--dump-single-json', '--no-warnings', '--skip-download'];
+  if (cookieFilePath) args.push('--cookies', cookieFilePath);
   if (getPlatform(url) === 'YouTube' && !new URL(url).searchParams.has('list')) {
     args.push('--no-playlist');
   }
@@ -658,7 +667,10 @@ async function handleDownload(req, res) {
 
     if (kind === 'collection') {
       const outputTemplate = path.join(tempDir, '%(title).180B.%(ext)s');
-      await runProcess(ytdlpBinary, ['--ignore-errors', '--no-warnings', '-o', outputTemplate, sourceUrl], {
+      const collectionArgs = ['--ignore-errors', '--no-warnings', '-o', outputTemplate];
+      if (cookieFilePath) collectionArgs.push('--cookies', cookieFilePath);
+      collectionArgs.push(sourceUrl);
+      await runProcess(ytdlpBinary, collectionArgs, {
         timeoutMs: 30 * 60 * 1000,
       });
       const files = await listFiles(tempDir);
@@ -680,6 +692,7 @@ async function handleDownload(req, res) {
 
     const outputTemplate = path.join(tempDir, `${title}.%(ext)s`);
     const args = ['--no-warnings', '--no-playlist', '-f', selector, '-o', outputTemplate];
+    if (cookieFilePath) args.push('--cookies', cookieFilePath);
 
     if (kind === 'audio') {
       if (getDownloadParam(req, 'audioFormat')) {
