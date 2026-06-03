@@ -23,7 +23,28 @@ const corsOrigin = process.env.CORS_ORIGIN || false;
 let cookieFilePath = null;
 if (process.env.YOUTUBE_COOKIES) {
   cookieFilePath = path.join(os.tmpdir(), 'yt-cookies.txt');
-  await fs.writeFile(cookieFilePath, process.env.YOUTUBE_COOKIES, 'utf8');
+  let cookieContent = process.env.YOUTUBE_COOKIES;
+  
+  // Try to parse as JSON and convert to Netscape format
+  try {
+    const parsed = JSON.parse(cookieContent);
+    if (Array.isArray(parsed)) {
+      cookieContent = "# Netscape HTTP Cookie File\n# https://curl.haxx.se/rfc/cookie_spec.html\n# This is a generated file! Do not edit.\n\n" + 
+        parsed.map(c => {
+          const domain = c.domain || '';
+          const includeSubDomains = domain.startsWith('.') ? 'TRUE' : 'FALSE';
+          const path = c.path || '/';
+          const secure = c.secure ? 'TRUE' : 'FALSE';
+          const expiry = c.expirationDate ? Math.floor(c.expirationDate) : 0;
+          return `${domain}\t${includeSubDomains}\t${path}\t${secure}\t${expiry}\t${c.name}\t${c.value}`;
+        }).join('\n');
+      console.log('YouTube JSON cookies detected and converted to Netscape format.');
+    }
+  } catch (e) {
+    // Not JSON, assume it's already in Netscape format
+  }
+
+  await fs.writeFile(cookieFilePath, cookieContent, 'utf8');
   console.log('YouTube cookies loaded from environment variable.');
 }
 const { ZipArchive } = archiver;
