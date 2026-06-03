@@ -40,6 +40,13 @@ app.use(cors({
   credentials: false,
 }));
 
+// Set long timeouts to prevent download interruptions on cloud platforms
+app.use((req, res, next) => {
+  req.socket.setTimeout(30 * 60 * 1000); // 30 minutes
+  res.setTimeout(30 * 60 * 1000);        // 30 minutes
+  next();
+});
+
 function validateMediaUrl(value) {
   let url;
   try {
