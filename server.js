@@ -382,9 +382,12 @@ function buildVideoFormats(info, platform = '') {
     const currentScore = bestByHeight.get(format.height)?.score ?? -1;
     if (score <= currentScore) continue;
 
+    // Use height-based selector with fallbacks so it works even if a specific
+    // format ID is unavailable at download time (e.g. with/without cookies).
+    const h = format.height;
     const selector = format.acodec && format.acodec !== 'none'
-      ? String(format.format_id)
-      : `${format.format_id}+bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio/best`;
+      ? `${format.format_id}/bestvideo[height=${h}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height=${h}]+bestaudio/best[height<=${h}]/best`
+      : `${format.format_id}+bestaudio[ext=m4a]/bestvideo[height=${h}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height=${h}]+bestaudio/best[height<=${h}]/best`;
     const canDirectStream = platform !== 'TikTok' && isDirectPlayableMp4(format);
 
     bestByHeight.set(format.height, {
@@ -690,21 +693,7 @@ async function handleDownload(req, res) {
       return;
     }
 
-    const outputTemplate = path.join(tempDir, `${title}.%(ext)s`);
-    const args = ['--no-warnings', '--no-playlist', '-f', selector, '-o', outputTemplate];
-    if (cookieFilePath) args.push('--cookies', cookieFilePath);
-
-    if (kind === 'audio') {
-      if (getDownloadParam(req, 'audioFormat')) {
-        args.push('-x', '--audio-format', String(getDownloadParam(req, 'audioFormat')));
-        if (getDownloadParam(req, 'audioQuality')) args.push('--audio-quality', String(getDownloadParam(req, 'audioQuality')));
-      }
-    } else {
-      args.push('--merge-output-format', ext === 'mkv' ? 'mkv' : 'mp4');
-    }
-
-    args.push(sourceUrl);
-    await runProcess(ytdlpBinary, args, { timeoutMs: 30 * 60 * 1000 });
+    const outputTemplate = path.join(tempDir, `${title}.%(ext)s`);\n    const args = [\n      '--no-warnings', '--no-playlist',\n      '-f', selector,\n      '-o', outputTemplate,\n      '--concurrent-fragments', '16',   // download 16 fragments in parallel\n      '--buffer-size', '16K',           // larger read buffer\n      '--http-chunk-size', '10M',       // fetch in 10MB chunks\n      '--retries', '10',                // retry on failure\n      '--fragment-retries', '10',       // retry fragments\n    ];\n    if (cookieFilePath) args.push('--cookies', cookieFilePath);\n\n    if (kind === 'audio') {\n      if (getDownloadParam(req, 'audioFormat')) {\n        args.push('-x', '--audio-format', String(getDownloadParam(req, 'audioFormat')));\n        if (getDownloadParam(req, 'audioQuality')) args.push('--audio-quality', String(getDownloadParam(req, 'audioQuality')));\n      }\n    } else {\n      args.push('--merge-output-format', ext === 'mkv' ? 'mkv' : 'mp4');\n    }\n\n    args.push(sourceUrl);\n    await runProcess(ytdlpBinary, args, { timeoutMs: 30 * 60 * 1000 });
     const files = await listFiles(tempDir);
     if (files.length === 0) throw new Error('No downloadable file was produced.');
 
