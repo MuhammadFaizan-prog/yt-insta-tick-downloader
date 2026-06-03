@@ -7,7 +7,8 @@
     "dev": "node server.js",
     "build": "vite build",
     "start": "node server.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:cookies": "node test-cookies-validation.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",

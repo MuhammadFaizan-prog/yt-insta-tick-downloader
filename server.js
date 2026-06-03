@@ -29,23 +29,40 @@ if (process.env.YOUTUBE_COOKIES) {
   try {
     const parsed = JSON.parse(cookieContent);
     if (Array.isArray(parsed)) {
-      cookieContent = "# Netscape HTTP Cookie File\n# https://curl.haxx.se/rfc/cookie_spec.html\n# This is a generated file! Do not edit.\n\n" + 
-        parsed.map(c => {
-          const domain = c.domain || '';
-          const includeSubDomains = domain.startsWith('.') ? 'TRUE' : 'FALSE';
-          const path = c.path || '/';
-          const secure = c.secure ? 'TRUE' : 'FALSE';
-          const expiry = c.expirationDate ? Math.floor(c.expirationDate) : 0;
-          return `${domain}\t${includeSubDomains}\t${path}\t${secure}\t${expiry}\t${c.name}\t${c.value}`;
-        }).join('\n');
-      console.log('YouTube JSON cookies detected and converted to Netscape format.');
+      const now = Date.now() / 1000; // Current time in seconds
+      const validCookies = parsed.filter(c => {
+        // Filter out expired cookies
+        if (c.expirationDate && c.expirationDate < now) {
+          console.log(`Skipping expired cookie: ${c.name}`);
+          return false;
+        }
+        return true;
+      });
+      
+      if (validCookies.length === 0) {
+        console.error('❌ All YouTube cookies are expired! Please update YOUTUBE_COOKIES environment variable.');
+        cookieFilePath = null;
+      } else {
+        cookieContent = "# Netscape HTTP Cookie File\n# https://curl.haxx.se/rfc/cookie_spec.html\n# This is a generated file! Do not edit.\n\n" + 
+          validCookies.map(c => {
+            const domain = c.domain || '.youtube.com';
+            const includeSubDomains = domain.startsWith('.') ? 'TRUE' : 'FALSE';
+            const cookiePath = c.path || '/';
+            const secure = c.secure ? 'TRUE' : 'FALSE';
+            const expiry = c.expirationDate ? Math.floor(c.expirationDate) : 0;
+            return `${domain}\t${includeSubDomains}\t${cookiePath}\t${secure}\t${expiry}\t${c.name}\t${c.value}`;
+          }).join('\n');
+        console.log(`✅ YouTube cookies loaded: ${validCookies.length} valid cookies (${parsed.length - validCookies.length} expired)`);
+      }
     }
   } catch (e) {
-    // Not JSON, assume it's already in Netscape format
+    console.log('YouTube cookies detected in Netscape format.');
   }
 
-  await fs.writeFile(cookieFilePath, cookieContent, 'utf8');
-  console.log('YouTube cookies loaded from environment variable.');
+  if (cookieFilePath) {
+    await fs.writeFile(cookieFilePath, cookieContent, 'utf8');
+    console.log(`Cookie file written to: ${cookieFilePath}`);
+  }
 }
 const { ZipArchive } = archiver;
 const allowedHosts = [
@@ -196,7 +213,12 @@ function runProcess(command, args, options = {}) {
 
 async function probeWithYtDlp(url) {
   const args = ['--dump-single-json', '--no-warnings', '--skip-download'];
-  if (cookieFilePath) args.push('--cookies', cookieFilePath);
+  if (cookieFilePath) {
+    args.push('--cookies', cookieFilePath);
+    console.log(`Using cookie file: ${cookieFilePath}`);
+  } else if (getPlatform(url) === 'YouTube') {
+    console.warn('⚠️ No YouTube cookies available - download may fail for age-restricted or private videos');
+  }
   
   if (getPlatform(url) === 'YouTube') {
     args.push('--extractor-args', 'youtube:player_client=android,web');
@@ -206,10 +228,33 @@ async function probeWithYtDlp(url) {
   }
   args.push(url);
 
-  const { stdout } = await runProcess(ytdlpBinary, args, { timeoutMs: 180000 });
-  const jsonStart = stdout.indexOf('{');
-  if (jsonStart < 0) throw new Error('No metadata was returned for this URL.');
-  return JSON.parse(stdout.slice(jsonStart));
+  try {
+    console.log(`Running yt-dlp with args:`, args.filter(a => a !== cookieFilePath).join(' '));
+    const { stdout, stderr } = await runProcess(ytdlpBinary, args, { timeoutMs: 180000 });
+    
+    if (stderr) {
+      console.log('yt-dlp stderr:', stderr);
+    }
+    
+    const jsonStart = stdout.indexOf('{');
+    if (jsonStart < 0) throw new Error('No metadata was returned for this URL.');
+    return JSON.parse(stdout.slice(jsonStart));
+  } catch (error) {
+    console.error(`❌ yt-dlp failed for ${getPlatform(url)}:`, error.message);
+    
+    // Provide more helpful error messages
+    if (error.message.includes('Sign in to confirm') || error.message.includes('This video is unavailable')) {
+      throw new Error('YouTube requires authentication. Please update your cookies or try a different video.');
+    }
+    if (error.message.includes('HTTP Error 400') || error.message.includes('Bad Request')) {
+      throw new Error('YouTube rejected the request. Your cookies may be expired or invalid. Please update YOUTUBE_COOKIES.');
+    }
+    if (error.message.includes('private') || error.message.includes('members-only')) {
+      throw new Error('This video is private or members-only and requires valid authentication.');
+    }
+    
+    throw error;
+  }
 }
 
 async function probeInstagramWithInstaloader(url) {
@@ -765,6 +810,25 @@ async function handleDownload(req, res) {
     }
   }
 }
+
+// Health check endpoint to verify cookie status
+app.get('/api/health', async (req, res) => {
+  const status = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    cookies: {
+      configured: !!process.env.YOUTUBE_COOKIES,
+      fileExists: cookieFilePath ? await fs.access(cookieFilePath).then(() => true).catch(() => false) : false,
+      filePath: cookieFilePath || 'not configured'
+    },
+    binaries: {
+      ytdlp: ytdlpBinary,
+      ffmpeg: ffmpegBinary,
+      ffprobe: ffprobeBinary
+    }
+  };
+  res.json(status);
+});
 
 app.get('/api/download', handleDownload);
 app.post('/api/download', handleDownload);
